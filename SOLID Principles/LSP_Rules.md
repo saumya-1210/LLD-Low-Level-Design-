@@ -1,6 +1,6 @@
 # Liskov Substitution Principle (LSP)
 
-**Definition:**  
+**Definition:**
 Objects of a subclass should be replaceable with objects of the parent class without breaking the correctness of the program.
 
 In simple words:
@@ -13,35 +13,44 @@ In simple words:
 
 ## 1.1 Method Argument Rule
 
-The overridden method in the subclass must accept the same parameter type or a broader type.
+The overridden method in the subclass must accept the same parameter type as the parent.
 
 ### ✅ Valid
 
-```java
-class Bird {
-    void eat(Food food) {}
-}
+```cpp
+class Food {};
 
-class Sparrow extends Bird {
-    void eat(Food food) {}
-}
+class Bird {
+public:
+    virtual void eat(Food food) {}
+};
+
+class Sparrow : public Bird {
+public:
+    void eat(Food food) override {}
+};
 ```
 
 ### ❌ Invalid
 
-```java
-class Bird {
-    void eat(Food food) {}
-}
+```cpp
+class Food {};
+class Seeds : public Food {};
 
-class Sparrow extends Bird {
+class Bird {
+public:
+    virtual void eat(Food food) {}
+};
+
+class Sparrow : public Bird {
+public:
     void eat(Seeds seeds) {}
-}
+};
 ```
 
-Client code expects to pass any `Food`.
+This is not actually overriding the parent function.
 
-Restricting it to only `Seeds` breaks substitutability.
+Client code expects any `Food`, but the child only accepts `Seeds`.
 
 ---
 
@@ -51,71 +60,51 @@ A subclass may return the same type or a more specific type (covariant return ty
 
 ### ✅ Valid
 
-```java
-class Animal {}
+```cpp
+class Animal {};
 
-class Dog extends Animal {}
+class Dog : public Animal {};
 
 class AnimalFactory {
-    Animal create() {}
-}
+public:
+    virtual Animal* create() {
+        return new Animal();
+    }
+};
 
-class DogFactory extends AnimalFactory {
-    Dog create() {}
-}
+class DogFactory : public AnimalFactory {
+public:
+    Dog* create() override {
+        return new Dog();
+    }
+};
 ```
 
-`Dog` is an `Animal`, so this is safe.
+`Dog*` is more specific than `Animal*`.
 
 ### ❌ Invalid
 
-```java
+```cpp
+class Animal {};
+
 class AnimalFactory {
-    Animal create() {}
-}
+public:
+    virtual Animal* create() {
+        return new Animal();
+    }
+};
 
-class DogFactory extends AnimalFactory {
-    Object create() {}
-}
+class DogFactory : public AnimalFactory {
+public:
+    void* create() {
+        return nullptr;
+    }
+};
 ```
 
-The parent promised an `Animal`.
+The parent promised an `Animal*`.
 
-Returning a broader type like `Object` breaks that promise.
-
----
-
-## 1.3 Exception Rule
-
-A subclass may throw fewer exceptions or more specific exceptions, but not broader exceptions.
-
-### ✅ Valid
-
-```java
-class FileReader {
-    void read() throws IOException {}
-}
-
-class CsvReader extends FileReader {
-    void read() throws FileNotFoundException {}
-}
-```
-
-`FileNotFoundException` is a subtype of `IOException`.
-
-### ❌ Invalid
-
-```java
-class FileReader {
-    void read() throws IOException {}
-}
-
-class CsvReader extends FileReader {
-    void read() throws Exception {}
-}
-```
-
-The subclass is introducing a broader exception than clients expect.
+Returning a broader type breaks that contract.
 
 ---
 
@@ -127,15 +116,21 @@ A subclass must preserve all invariants defined by the parent class.
 
 ### Example
 
-```java
+```cpp
 class BankAccount {
-    protected double balance;
+protected:
+    double balance;
 
-    void withdraw(double amount) {
+public:
+    BankAccount(double amount) : balance(amount) {}
+
+    virtual void withdraw(double amount) {
         if(balance - amount < 0)
-            throw new IllegalArgumentException();
+            throw std::runtime_error("Insufficient funds");
+
+        balance -= amount;
     }
-}
+};
 ```
 
 Invariant:
@@ -146,56 +141,56 @@ balance >= 0
 
 ### ❌ Violation
 
-```java
-class OverdraftAccount extends BankAccount {
+```cpp
+class OverdraftAccount : public BankAccount {
+public:
+    OverdraftAccount(double amount)
+        : BankAccount(amount) {}
 
-    void withdraw(double amount) {
-        balance -= amount; // can become negative
+    void withdraw(double amount) override {
+        balance -= amount;
     }
-}
+};
 ```
 
-The subclass breaks the invariant guaranteed by the parent.
+Now the balance can become negative.
+
+The subclass violates the invariant guaranteed by the parent.
 
 ---
 
 ## 2.2 History Constraint Rule
 
-A subclass must preserve the behavioural history expected from the parent.
+A subclass must preserve the behaviour expected from the parent.
 
 ### Parent
 
-```java
+```cpp
 class BankAccount {
-    void deposit(double amount) {}
-    void withdraw(double amount) {}
-}
+public:
+    virtual void deposit(double amount) {}
+    virtual void withdraw(double amount) {}
+};
 ```
 
-Clients expect:
-
-```text
-Deposit → Withdraw → Deposit → Withdraw
-```
-
-to always be possible.
+Client code expects withdrawals to always be available.
 
 ### ❌ Violation
 
-```java
-class FixedDepositAccount extends BankAccount {
-
-    void withdraw(double amount) {
-        throw new UnsupportedOperationException();
+```cpp
+class FixedDepositAccount : public BankAccount {
+public:
+    void withdraw(double amount) override {
+        throw std::runtime_error(
+            "Withdrawals not allowed"
+        );
     }
-}
+};
 ```
 
-The parent guarantees withdrawals.
+The subclass removes behaviour that the parent promised.
 
-The subclass removes that capability.
-
-This is one of the classic LSP violations.
+Classic LSP violation.
 
 ---
 
@@ -209,31 +204,40 @@ A subclass may weaken preconditions but must never strengthen them.
 
 ### Parent
 
-```java
-void setVolume(int volume)
-```
-
-Valid range:
-
-```text
-0 - 100
+```cpp
+class Speaker {
+public:
+    virtual void setVolume(int volume) {
+        // accepts 0 - 100
+    }
+};
 ```
 
 ### ✅ Valid (Weaker)
 
-```text
-0 - 150
+```cpp
+class SmartSpeaker : public Speaker {
+public:
+    void setVolume(int volume) override {
+        // accepts 0 - 150
+    }
+};
 ```
 
-The subclass accepts everything the parent accepted and more.
+Everything accepted by the parent is still accepted.
 
 ### ❌ Invalid (Stronger)
 
-```text
-20 - 80
+```cpp
+class SmartSpeaker : public Speaker {
+public:
+    void setVolume(int volume) override {
+        // accepts only 20 - 80
+    }
+};
 ```
 
-Code passing `10` worked for the parent but fails for the child.
+Code passing `10` worked before but now fails.
 
 Substitutability is broken.
 
@@ -241,43 +245,110 @@ Substitutability is broken.
 
 ## 3.2 Postconditions
 
-A postcondition is a condition guaranteed after method execution.
+A postcondition is a guarantee made after a method executes.
 
 A subclass may strengthen postconditions but must never weaken them.
 
 ### Parent
 
-```java
-Payment processPayment()
+```cpp
+class PaymentProcessor {
+public:
+    virtual bool processPayment() {
+        return true;
+    }
+};
 ```
 
 Guarantee:
 
 ```text
-Returns a valid payment receipt.
+Returns true if payment succeeds.
 ```
 
 ### ✅ Valid (Stronger)
 
-```text
-Returns a valid payment receipt
-AND
-sends a confirmation email.
+```cpp
+class PremiumProcessor : public PaymentProcessor {
+public:
+    bool processPayment() override {
+
+        bool success = true;
+
+        if(success) {
+            sendConfirmationEmail();
+        }
+
+        return success;
+    }
+
+private:
+    void sendConfirmationEmail() {}
+};
 ```
 
-The subclass provides additional guarantees.
+The subclass gives an additional guarantee.
 
-### ❌ Invalid (Weaker)
+### ❌ Invalid
 
-```text
-May or may not return a receipt.
+```cpp
+class FaultyProcessor : public PaymentProcessor {
+public:
+    bool processPayment() override {
+
+        // payment succeeds
+
+        return false;
+    }
+};
 ```
 
-The parent promised a receipt.
+The parent promised correct success reporting.
 
-The subclass no longer guarantees it.
+The subclass breaks that guarantee.
 
-This breaks client expectations.
+---
+
+# Most Famous LSP Violation
+
+## ❌ Bird-Penguin Problem
+
+```cpp
+class Bird {
+public:
+    virtual void fly() {
+        std::cout << "Flying";
+    }
+};
+
+class Penguin : public Bird {
+public:
+    void fly() override {
+        throw std::runtime_error(
+            "Penguins cannot fly"
+        );
+    }
+};
+```
+
+Client:
+
+```cpp
+void makeBirdFly(Bird& bird) {
+    bird.fly();
+}
+```
+
+```cpp
+Penguin p;
+makeBirdFly(p);
+```
+
+The client expects every `Bird` to fly.
+
+The `Penguin` breaks that expectation.
+
+LSP is violated.
 
 ---
 
@@ -285,12 +356,12 @@ This breaks client expectations.
 
 A subclass should:
 
-- ✔ Accept everything the parent accepts.
-- ✔ Return at least what the parent promises.
-- ✔ Preserve all parent invariants.
-- ✔ Not remove supported behaviour.
-- ✔ Throw fewer or more specific exceptions.
-- ✔ Require no stronger conditions from callers.
-- ✔ Provide no weaker guarantees after execution.
+* ✔ Accept everything the parent accepts.
+* ✔ Return at least what the parent promises.
+* ✔ Preserve all parent invariants.
+* ✔ Not remove supported behaviour.
+* ✔ Require no stronger conditions.
+* ✔ Provide no weaker guarantees.
+* ✔ Be safely replaceable for its parent.
 
 > If replacing a parent object with a child object changes the correctness of the program, LSP is violated.
